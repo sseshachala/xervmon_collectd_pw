@@ -1,0 +1,189 @@
+<div>
+	<script type="text/javascript">
+	$(function () {
+		var custom_tab_id = $('div[tabid="{{ tabid }}"]').attr('custom_tab_id');
+		var json_data = null;
+		var aggregators_selector = 'select[tabid="{{ tabid }}"][name="aggregators"]';
+		var hosts_selector = 'select[tabid="{{ tabid }}"][name="hosts"]';
+		var plugins_selector = 'select[tabid="{{ tabid }}"][name="plugins"]';
+		$.each(json_item_datas['plugins'], function (plugin_name, plugin) {
+			$.each(plugin, function (plugin_instance_name, plugin_instance) {
+				$.each(plugin_instance, function (type_name, type) {
+					$.each(type, function (type_instance_name, type) {
+						var value = new Array( plugin_name, plugin_instance_name, type_name, type_instance_name );
+						var name = plugin_name;
+						name = name+(plugin_instance_name == '_' ? '/' : '-'+plugin_instance_name+'/');
+						name = name+type_name;
+						name = name+(type_instance_name == '_' ? '' : '-'+type_instance_name);
+						var option = document.createElement('option');
+						option.innerHTML = name;
+						$(option).data(value);
+						$(option).appendTo(aggregators_selector);
+					});
+				});
+			});
+		});
+		$(json_item_datas['datas']['tabs'][custom_tab_id]['selected_aggregators']).each(function (devnull, plugin) {
+			$(aggregators_selector+' option').each(function () {
+				var data = $(this).data()
+				var datas = new Array(data[0],data[1],data[2],data[3]);
+				if ($(plugin).compare(datas)) {
+					$(this).attr('selected', 'selected');
+				}
+			});
+		});
+		$(aggregators_selector).multiselect({ noneSelectedText: 'Select plugin(s)', selectedList: 0 }).multiselectfilter();
+
+		$.getJSON('action.php?tpl=custom_view_folder&action=get_datas&id='+json_item_datas['jstree']['id'], function(datas) {
+			json_datas = datas;
+			$.each(json_datas['hosts'], function (hostn, host) {
+				var option = document.createElement('option');
+				option.innerHTML = host;
+				$(option).appendTo(hosts_selector);
+			});
+			$(json_item_datas['datas']['tabs'][custom_tab_id]['selected_hosts']).each(function (devnull, host) {
+				$(hosts_selector+' option').each(function () {
+					if ($(this).val() == host) {
+						$(this).attr('selected', 'selected');
+					}
+				});
+			});
+			$(hosts_selector).multiselect({ noneSelectedText: 'Select host(s)', selectedList: 0 }).multiselectfilter();
+			$.ajax({
+				async: true,
+				type: 'POST',
+				url: 'json-rpc',
+				data: JSON.stringify({"jsonrpc": "2.0", "method": "pw_get_metric", "params": json_datas['hosts'], "id": 0}),
+				dataType: 'json',
+				cache: false, 
+				success: function(result, textStatus, XMLHttpRequest) {
+					var alreadytreated = new Array();
+					$(result['result']).each(function(i, metric) {
+						m = splitMetric(metric);
+						p = m[0]; pi = m[1]; t = m[2]; ti = m[3];
+						var grouped_type = jQuery.inArray(t, json_item_datas['config']['widgets']['folder_aggregator']['grouped_type'] );
+						if (grouped_type != -1) {
+							if (alreadytreated[p+pi+t]) {
+								return;
+							} else {
+								alreadytreated[p+pi+t] = true;
+							}
+						}
+						var option = document.createElement('option');
+						option.innerHTML = p+(pi != '' ? '-'+pi : '')+'/'+t+(ti != '' && grouped_type == -1 ? '-'+ti : '');
+						$(option).attr('plugin', p+(pi != '' ? '-'+pi : '')+'/'+t+(ti != '' && grouped_type == -1 ? '-'+ti : ''));
+						$(option).data(m);
+						$(option).appendTo(plugins_selector);
+					});
+					$(json_item_datas['datas']['tabs'][custom_tab_id]['selected_graph']).each(function (devnull, plugin) {
+						p = plugin[0]; pi = plugin[1]; t = plugin[2]; ti = plugin[3];
+						var grouped_type = jQuery.inArray(t, json_item_datas['config']['widgets']['folder_aggregator']['grouped_type'] );
+						var metric = p+(pi != '' ? '-'+pi : '')+'/'+t+(ti != '' && grouped_type == -1 ? '-'+ti : '');
+						$(plugins_selector+' option').each(function () {
+							//console.log($(this).attr('plugin') , metric);
+							if ($(this).attr('plugin') == metric) {
+								$(this).attr('selected', 'selected');
+							}
+						});
+					});
+					$(plugins_selector).multiselect({ noneSelectedText: 'Select plugin(s)', selectedList: 0 }).multiselectfilter();
+
+				},
+				error: function(XMLHttpRequest, textStatus, errorThrown) {
+					var error =  jQuery.parseJSON(XMLHttpRequest['responseText']);
+					notify_ko('jsonrpc error : '+error['error']['message']+' (code : '+error['error']['code']+')');
+				},
+			});
+			/*
+			$.each(json_datas['plugins'], function (pluginitemn, pluginitem) {
+				var name = pluginitem[0];
+				name = name+(pluginitem[1] == '' ? '/' : '-'+pluginitem[1]+'/');
+				name = name+pluginitem[2];
+				name = name+(pluginitem[3] == '' ? '' : '-'+pluginitem[3]);
+				var option = document.createElement('option');
+				option.innerHTML = name;
+				$(option).data(pluginitem);
+				$(option).appendTo(plugins_selector);
+			});
+			*/
+		});
+		var input_selector = 'input[tabid="{{ tabid }}"]';
+		$(input_selector).click(function () {
+			switch($(this).attr('action')) {
+				case 'apply':
+					$('div[tabid="{{ tabid }}"] div div[class="graphcontainer"]').html('');
+					$(aggregators_selector+' option:selected').each(function() {
+						graphid++;
+						$('<img class="graph" id="graph_{{ tabid }}_'+graphid+'"/>').appendTo('div[tabid="{{ tabid }}"] div div[class="graphcontainer"]');
+						$('#graph_{{ tabid }}_'+graphid).pwgraph({
+							host: json_item_datas['host'],
+							plugin: $(this).data()[0],
+							plugin_instance: $(this).data()[1],
+							type: $(this).data()[2],
+							type_instance: $(this).data()[3]
+						}).pwgraph('display');
+					});
+					$('<br/>').appendTo('div[tabid="{{ tabid }}"] div div[class="graphcontainer"]');
+					$(hosts_selector+' option:selected').each(function() {
+						var host = $(this).val();
+						$(plugins_selector+' option:selected').each(function() {
+							graphid++;
+							$('<img class="graph" id="graph_{{ tabid }}_'+graphid+'"/>').appendTo('div[tabid="{{ tabid }}"] div div[class="graphcontainer"]');
+							$('#graph_{{ tabid }}_'+graphid).pwgraph({
+								host: host,
+								plugin: $(this).data()[0],
+								plugin_instance: $(this).data()[1],
+								type: $(this).data()[2],
+								type_instance: $(this).data()[3]
+							}).pwgraph('display');
+						});
+						$('<br/>').appendTo('div[tabid="{{ tabid }}"] div div[class="graphcontainer"]');
+					});
+				break;
+				case 'save':
+        			var aggregators = new Array();
+        			var plugins = new Array();
+        			var hosts = new Array();
+					$(aggregators_selector+' option:selected').each(function() {
+						aggregators.push($(this).data());
+					});
+					$(plugins_selector+' option:selected').each(function() {
+						plugins.push($(this).data());
+					});
+					$(hosts_selector+' option:selected').each(function() {
+						hosts.push($(this).val());
+					});
+					$.ajax({
+					    async : false, type: 'POST', url: "action.php?tpl=custom_view_folder",
+					    data : { 
+							action : "save_tab",
+							id : json_item_datas['jstree']['id'],
+							tab_id : custom_tab_id,
+							selected_graph : plugins,
+							selected_hosts : hosts,
+							selected_aggragators : aggregators
+						},
+					    complete : function (r) {
+					        if(!r.status) {
+								notify_ko('Error, can\'t retrieve data from server !');
+							} else {
+								notify_ok("Plugin list saved");
+							}
+					    }
+					});
+				break;
+			}
+		}).jqxButton({ theme: theme });
+	});
+	</script>
+    Aggregators <select multiple="multiple" name="aggregators" tabid="{{ tabid }}"></select><br/>
+    Hosts <select multiple="multiple" name="hosts" tabid="{{ tabid }}"></select> &#x2192; Plugins
+    <select multiple="multiple" name="plugins" tabid="{{ tabid }}"></select><br/>
+	<input type="button" action="apply" tabid="{{ tabid }}" value="Apply" />
+	<input type="button" action="save" tabid="{{ tabid }}" value="Save" />
+	<br/>
+	<div class="graphcontainer" style="white-space:nowrap;">
+	
+	</div>
+	    
+</div>
