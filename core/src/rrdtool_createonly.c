@@ -267,7 +267,7 @@ static void cache_stack_move_to_tail(stat_cache_t* sc) {
 }
 
 static stat_cache_t* stat_file_with_cache(const char *filename) {
-		int status = 0;
+		//int status = 0;
 		int check_on_disk;
 		cdtime_t now;
 		stat_cache_t *sc = NULL;
@@ -297,7 +297,7 @@ static stat_cache_t* stat_file_with_cache(const char *filename) {
 				struct stat  statbuf;
 				if (stat (filename, &statbuf) == -1) {
 						if (errno == ENOENT) {
-								status = 0;
+								//status = 0;
 								sc->file_exists = STAT_CACHE_FILE_MISSING;
 						} else {
 								char errbuf[1024];
